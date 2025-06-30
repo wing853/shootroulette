@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>AI 사격 배틀 목업</title>
+<style>
+  body {
+    background: #121212;
+    color: white;
+    font-family: 'Arial', sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    margin: 0;
+    display: flex; justify-content: center; align-items: center;
+  }
+  #arena {
+    position: relative;
+    width: 500px; height: 500px;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, #222 40%, #111 100%);
+    box-shadow: 0 0 40px rgba(255,0,0,0.5);
+  }
+  .player {
+    position: absolute;
+    width: 80px; height: 30px;
+    text-align: center;
+    line-height: 30px;
+    background: #333;
+    border-radius: 5px;
+    transition: opacity 0.3s ease;
+  }
+  .targeted {
+    animation: blink 0.6s linear infinite;
+  }
+  .evade {
+    animation: evadeMove 0.6s ease forwards;
+  }
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.2; }
+  }
+  @keyframes evadeMove {
+    0% { transform: translateX(0); opacity: 1; }
+    50% { transform: translateX(-20px) translateY(-10px); opacity: 0.6; }
+    100% { transform: translateX(50px) translateY(20px); opacity: 0; }
+  }
+
+  #aim {
+    position: absolute;
+    width: 100px; height: 100px;
+    border: 2px solid red;
+    border-radius: 50%;
+    pointer-events: none;
+    box-shadow: 0 0 15px red;
+    transition: top 0.6s ease, left 0.6s ease;
+  }
+
+  #radar {
+    position: absolute;
+    width: 200px; height: 200px;
+    border: 2px solid red;
+    border-radius: 50%;
+    top: 150px; left: 150px;
+    box-shadow: 0 0 10px red inset;
+    animation: rotateRadar 4s linear infinite;
+    pointer-events: none;
+  }
+
+  @keyframes rotateRadar {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+</style>
+</head>
+<body>
+
+<div id="arena">
+  <div id="radar"></div>
+  <div id="aim"></div>
+</div>
+
+<script>
+  const arena = document.getElementById('arena');
+  const aim = document.getElementById('aim');
+
+  // 참가자 데이터
+  const players = [
+    { name: 'Alice' }, { name: 'Bob' }, { name: 'Charlie' }, { name: 'Diana' },
+    { name: 'Eve' }, { name: 'Frank' }, { name: 'Grace' }, { name: 'Hank' }
+  ];
+
+  // 참가자 원형 배치
+  const center = 250;
+  const radius = 180;
+  players.forEach((p, i) => {
+    const angle = (2 * Math.PI / players.length) * i - Math.PI / 2;
+    const x = center + radius * Math.cos(angle);
+    const y = center + radius * Math.sin(angle);
+
+    const div = document.createElement('div');
+    div.className = 'player';
+    div.style.left = `${x - 40}px`;
+    div.style.top = `${y - 15}px`;
+    div.textContent = p.name;
+    arena.appendChild(div);
+    p.elem = div;
+    p.x = x;
+    p.y = y;
+    p.alive = true;
+  });
+
+  // AI 시야 랜덤 조준 + 사격 애니메이션 반복
+  let currentTargetIndex = -1;
+
+  function nextTarget() {
+    if (players.filter(p => p.alive).length === 0) return;
+
+    // 살아있는 참가자 중 랜덤 선택
+    let candidates = players.filter(p => p.alive);
+    let nextIndex = Math.floor(Math.random() * candidates.length);
+    let target = candidates[nextIndex];
+
+    // 이전 타겟 효과 제거
+    if (currentTargetIndex !== -1) {
+      let prevTarget = players[currentTargetIndex];
+      if (prevTarget.alive) {
+        prevTarget.elem.classList.remove('targeted', 'evade');
+        prevTarget.elem.style.opacity = 1;
+      }
+    }
+
+    currentTargetIndex = players.indexOf(target);
+
+    // 조준선 위치 이동
+    aim.style.left = `${target.x - 50}px`;
+    aim.style.top = `${target.y - 50}px`;
+
+    // 타겟 깜빡임 시작
+    target.elem.classList.add('targeted');
+
+    // 회피 애니메이션 후 탈락 처리
+    setTimeout(() => {
+      target.elem.classList.remove('targeted');
+      target.elem.classList.add('evade');
+
+      setTimeout(() => {
+        // 탈락 처리
+        target.alive = false;
+        target.elem.style.opacity = 0.1;
+        target.elem.textContent = target.name + ' ❌';
+
+        // 다음 타겟으로 진행
+        setTimeout(nextTarget, 1200);
+      }, 700);
+
+    }, 2000);
+  }
+
+  nextTarget();
+</script>
+
+</body>
+</html>

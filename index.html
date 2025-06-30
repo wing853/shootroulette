@@ -1,306 +1,537 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>캐릭터 사격 추첨기</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; text-align: center; padding: 20px; }
-    #game-area { width: 2000px; height: 1000px; margin: 20px auto; background: #d3e0ea; border: 3px solid #333; position: relative; overflow: hidden; cursor: crosshair; }
-    .character { position: absolute; width: 60px; height: 60px; background: url('https://upload.wikimedia.org/wikipedia/commons/8/89/Portrait_Placeholder.png') no-repeat center/contain; bottom: 0; left: 50%; transform: translateX(-50%); }
-    .target { position: absolute; width: 50px; height: 50px; background: #888; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; color: white; user-select: none; }
-    .target.alive { color: transparent; }
-    .target.hit { background: red; color: white; }
-    .target.eliminated { background: gray; color: white; }
-    .target.invisible { visibility: hidden; }
-    .bullet { position: absolute; width: 10px; height: 20px; background: black; border-radius: 5px; pointer-events: none; }
-    .obstacle { position: absolute; width: 60px; height: 60px; background: brown; border-radius: 10px; }
-    button, input { font-size: 1em; margin: 5px; }
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>스트리머용 사격형 룰렛</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #121212;
+    color: #eee;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #container {
+    display: flex;
+    gap: 20px;
+  }
+  #mapContainer {
+    position: relative;
+    width: 500px;
+    height: 500px;
+    background: #222;
+    border-radius: 15px;
+    box-shadow: 0 0 20px #0f0;
+  }
+  canvas {
+    display: block;
+    background: #111;
+    border-radius: 15px;
+  }
+  #deadListContainer {
+    width: 220px;
+    background: #222;
+    border-radius: 10px;
+    padding: 10px;
+    color: #f55;
+    box-shadow: 0 0 10px #f55;
+    height: 500px;
+    overflow-y: auto;
+  }
+  #deadListContainer h3 {
+    margin-top: 0;
+    text-align: center;
+    font-weight: 700;
+    color: #f55;
+  }
+  #deadList {
+    list-style: none;
+    padding-left: 10px;
+  }
+  #deadList li {
+    padding: 6px 4px;
+    border-bottom: 1px solid #f55;
+    font-weight: 600;
+  }
+  #controls {
+    margin-top: 20px;
+    width: 740px;
+    background: #222;
+    padding: 15px 20px;
+    border-radius: 12px;
+    box-shadow: 0 0 15px #0f0;
+  }
+  textarea, select, input[type=number] {
+    width: 100%;
+    padding: 8px;
+    margin-top: 6px;
+    margin-bottom: 12px;
+    border-radius: 6px;
+    border: none;
+    outline: none;
+    font-size: 14px;
+  }
+  label {
+    font-weight: 600;
+  }
+  button {
+    padding: 10px 18px;
+    font-size: 16px;
+    font-weight: 700;
+    border-radius: 10px;
+    border: none;
+    background: #0f0;
+    color: #111;
+    cursor: pointer;
+    transition: background 0.3s ease;
+  }
+  button:hover:not(:disabled) {
+    background: #2f2;
+  }
+  button:disabled {
+    background: #555;
+    cursor: not-allowed;
+  }
+</style>
 </head>
 <body>
-  <h1>🎯 캐릭터 사격 추첨기</h1>
 
-  <label>참가자 (콤마): 
-    <input type="text" id="participants" placeholder="예: 김보라, 이준호, 송다혜" size="40" />
-  </label>
-  <label>당첨 수: 
-    <input type="number" id="winnerCount" value="1" min="1" max="100000" />
-  </label><br>
+<h1>스트리머 전용 사격형 룰렛</h1>
 
-  <label><input type="radio" name="mode" value="hit" checked> 잡은 사람</label>
-  <label><input type="radio" name="mode" value="survivor"> 생존자</label><br>
-
-  <label>속도: 
-    <input type="range" id="speedRange" min="0" max="100" step="1" value="1" />
-    <span id="speedValue">1.0</span>
-  </label><br>
-
-  <button id="startBtn">시작</button>
-  <button id="resetBtn" disabled>초기화</button><br>
-
-  <div id="game-area" tabindex="0">
-    <div class="character" id="shooter"></div>
+<div id="container">
+  <div id="mapContainer">
+    <canvas id="gameMap" width="500" height="500"></canvas>
   </div>
+  <div id="deadListContainer">
+    <h3 id="deadListTitle">탈락자 리스트</h3>
+    <ul id="deadList"></ul>
+  </div>
+</div>
 
-  <div id="results"></div>
+<div id="controls">
+  <label for="playerInput">참가자 이름 (한 줄에 한 명씩, 쉼표도 가능)</label>
+  <textarea id="playerInput" rows="4" placeholder="참가자 이름을 입력하세요"></textarea>
 
-  <script>
-    const participantsInput = document.getElementById('participants');
-    const winnerCountInput = document.getElementById('winnerCount');
-    const modeInputs = document.getElementsByName('mode');
-    const speedRange = document.getElementById('speedRange');
-    const speedValue = document.getElementById('speedValue');
-    const startBtn = document.getElementById('startBtn');
-    const resetBtn = document.getElementById('resetBtn');
-    const gameArea = document.getElementById('game-area');
-    const shooter = document.getElementById('shooter');
-    const results = document.getElementById('results');
+  <label for="winnerCount">당첨자 수</label>
+  <input type="number" id="winnerCount" min="1" value="1" />
 
-    let participants = [];
-    let winnerCount = 1;
-    let mode = 'hit';
-    let baseSpeed = parseFloat(speedRange.value);
-    let shootingActive = false;
-    let targets = [];
-    let obstacles = [];
-    let winners = [];
-    let movements = new Map();
-    let obstacleIntervalId = null;
+  <label for="modeSelect">당첨자 선정 방식</label>
+  <select id="modeSelect">
+    <option value="survival">생존 방식 (랜덤 탈락)</option>
+    <option value="targeting">타게팅 방식 (즉시 당첨)</option>
+  </select>
 
-    let startTime = 0;
+  <label for="mapSelect">맵 선택</label>
+  <select id="mapSelect">
+    <option value="circle">원형 맵</option>
+    <option value="square">정사각형 맵</option>
+    <option value="polygon">인원수에 맞는 다각형 맵</option>
+  </select>
 
-    speedRange.oninput = () => {
-      baseSpeed = parseFloat(speedRange.value);
-      speedValue.textContent = baseSpeed.toFixed(1);
-    };
+  <button id="startBtn">게임 시작</button>
+</div>
 
-    startBtn.onclick = () => {
-      participants = participantsInput.value.split(',').map(s=>s.trim()).filter(s=>s);
-      winnerCount = parseInt(winnerCountInput.value);
-      mode = Array.from(modeInputs).find(r=>r.checked).value;
-      if(!participants.length || winnerCount<1 || winnerCount>participants.length) {
-        alert('입력 확인');
-        return;
-      }
+<script>
+// JavaScript 전체 코드 (스크립트)
 
-      shootingActive = true; 
-      winners = []; 
-      results.innerHTML = '';
-      clearAll();
-      createObstacles(8);
-      createTargets();
-      createBlinking(); // 깜빡이기 시작
-      setupMovements();
-      startTime = performance.now();
-      requestAnimationFrame(moveTargets);
+const canvas = document.getElementById('gameMap');
+const ctx = canvas.getContext('2d');
+const width = canvas.width;
+const height = canvas.height;
 
-      obstacleIntervalId = setInterval(() => {
-        if (!shootingActive) return;
-        createObstacles(2);
-      }, 5000);
+const playerInput = document.getElementById('playerInput');
+const winnerCountInput = document.getElementById('winnerCount');
+const modeSelect = document.getElementById('modeSelect');
+const mapSelect = document.getElementById('mapSelect');
+const startBtn = document.getElementById('startBtn');
 
-      resetBtn.disabled = false; 
-      startBtn.disabled = true;
-      gameArea.focus();
-    };
+const deadUl = document.getElementById('deadList');
+const deadListTitle = document.getElementById('deadListTitle');
+let players = [];
+let deadList = [];
+let winners = [];
+let gameRunning = false;
 
-    resetBtn.onclick = () => {
-      shootingActive = false;
-      clearAll();
-      clearInterval(obstacleIntervalId);
-      startBtn.disabled = false;
-      resetBtn.disabled = true;
-    };
+function drawPolygon(ctx, centerX, centerY, radius, sides) {
+  if(sides < 3) sides = 3;
+  ctx.beginPath();
+  for(let i = 0; i < sides; i++) {
+    const angle = (2 * Math.PI / sides) * i - Math.PI / 2;
+    const x = centerX + radius * Math.cos(angle);
+    const y = centerY + radius * Math.sin(angle);
+    if(i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+}
 
-    gameArea.onclick = e => {
-      if(!shootingActive) return;
-      const rect = gameArea.getBoundingClientRect();
-      shoot(e.clientX - rect.left, e.clientY - rect.top);
-    };
+function drawMap(ctx, type){
+  ctx.clearRect(0, 0, width, height);
+  ctx.strokeStyle = '#0f0';
+  ctx.lineWidth = 4;
+  ctx.shadowColor = '#0f0';
+  ctx.shadowBlur = 15;
 
-    gameArea.onkeydown = e => {
-      if(!shootingActive) return;
-      let x = shooter.offsetLeft;
-      if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') x -= 20;
-      if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') x += 20;
-      x = Math.max(0, Math.min(x, gameArea.clientWidth - shooter.offsetWidth));
-      shooter.style.left = x + 'px';
-    };
+  if(type === 'circle'){
+    ctx.beginPath();
+    ctx.arc(width/2, height/2, 230, 0, Math.PI*2);
+    ctx.stroke();
+  } else if(type === 'square'){
+    ctx.strokeRect(30, 30, width - 60, height - 60);
+  } else if(type === 'polygon'){
+    const sides = players.length >= 3 ? players.length : 3;
+    drawPolygon(ctx, width/2, height/2, 230, sides);
+  }
+  ctx.shadowBlur = 0;
+}
 
-    function shoot(tx, ty) {
-      const b = document.createElement('div'); b.className='bullet';
-      gameArea.appendChild(b);
-      let x = shooter.offsetLeft + shooter.offsetWidth/2, y = gameArea.clientHeight-60;
-      const dx = (tx-x), dy=(ty-y);
-      const dist = Math.hypot(dx,dy), vx=dx/dist*15, vy=dy/dist*15;
-      b.style.left=x+'px'; b.style.bottom=(gameArea.clientHeight-y)+'px';
+function getPlayerPosition(index, total, radius=200){
+  const centerX = width/2;
+  const centerY = height/2;
+  const angle = (index / total) * 2 * Math.PI - Math.PI / 2;
+  const x = centerX + radius * Math.cos(angle);
+  const y = centerY + radius * Math.sin(angle);
+  return {x, y};
+}
 
-      (function mb(){
-        if(!b.parentNode) return;
-        x+=vx; y+=vy;
-        b.style.left=x+'px'; b.style.bottom=(gameArea.clientHeight-y)+'px';
-        if(x<0||y<0||x>gameArea.clientWidth||y>gameArea.clientHeight){ b.remove(); return; }
-        for(let o of obstacles){
-          const or = o.getBoundingClientRect(), br = b.getBoundingClientRect();
-          if(br.right>or.left && br.left<or.right && br.bottom>or.top && br.top<or.bottom){ b.remove(); return; }
-        }
-        for(let t of targets){
-          if(t.dataset.eliminated==='true') continue;
-          const tr = t.getBoundingClientRect(), br = b.getBoundingClientRect();
-          if(br.right>tr.left && br.left<tr.right && br.bottom>tr.top && br.top<tr.bottom){
-            hit(t); b.remove(); return;
-          }
-        }
-        requestAnimationFrame(mb);
-      })();
-    }
+function drawPlayers(playerList) {
+  ctx.font = 'bold 20px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
 
-    function hit(t){
-      t.dataset.eliminated='true';
-      t.classList.remove('alive');
-      t.classList.add(mode==='hit'?'hit':'eliminated');
-      t.innerText = t.dataset.name;
-      if(mode==='hit'){
-        winners.push(t.dataset.name);
-        if(winners.length>=winnerCount) finish();
+  playerList.forEach((name, idx) => {
+    const {x, y} = getPlayerPosition(idx, playerList.length);
+    ctx.fillStyle = '#0f0';
+    ctx.shadowColor = '#0f0';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(x, y, 25, 0, 2*Math.PI);
+    ctx.fill();
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#000';
+    ctx.fillText(name, x, y);
+  });
+}
+
+function updateDeadList(deadPlayers) {
+  deadUl.innerHTML = '';
+  if (deadPlayers.length === 0) return;
+  deadPlayers.forEach(name => {
+    const li = document.createElement('li');
+    li.textContent = name;
+    deadUl.appendChild(li);
+  });
+}
+
+function updateWinnerList(winnerPlayers) {
+  deadUl.innerHTML = '';
+  if (winnerPlayers.length === 0) return;
+  winnerPlayers.forEach(name => {
+    const li = document.createElement('li');
+    li.textContent = name;
+    deadUl.appendChild(li);
+  });
+}
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function shootEffect(shooterPos, targetPos){
+  const bulletRadius = 6;
+  let progress = 0;
+  const speed = 0.05;
+
+  return new Promise(resolve => {
+    function animate(){
+      ctx.clearRect(0, 0, width, height);
+      drawMap(ctx, mapSelect.value);
+      drawPlayers(players.filter(p => !deadList.includes(p)));
+
+      const x = shooterPos.x + (targetPos.x - shooterPos.x) * progress;
+      const y = shooterPos.y + (targetPos.y - shooterPos.y) * progress;
+
+      ctx.fillStyle = '#f55';
+      ctx.shadowColor = '#f55';
+      ctx.shadowBlur = 15;
+      ctx.beginPath();
+      ctx.arc(x, y, bulletRadius, 0, 2*Math.PI);
+      ctx.fill();
+
+      progress += speed;
+
+      if(progress < 1){
+        requestAnimationFrame(animate);
       } else {
-        winners.push(t.dataset.name);
-        if(participants.length - winners.length <= winnerCount) finish();
-      }
-    }
+        let flashCount = 0;
+        function flash(){
+          ctx.clearRect(0, 0, width, height);
+          drawMap(ctx, mapSelect.value);
+          drawPlayers(players.filter(p => !deadList.includes(p)));
 
-    function finish(){
-      shootingActive = false;
-      clearInterval(obstacleIntervalId);
-      const win = mode==='hit' ? winners : participants.filter(p=>!winners.includes(p));
-      results.innerHTML = `<strong>🎉 당첨자:</strong> ${win.join(', ')}`;
-    }
-
-    function clearAll(){
-      targets.forEach(t=>t.remove()); targets=[]; movements.clear();
-      obstacles.forEach(o=>o.remove()); obstacles=[];
-      document.querySelectorAll('.bullet').forEach(b=>b.remove());
-    }
-
-    function createObstacles(n){
-      for(let i=0; i<n; i++){
-        const o = document.createElement('div'); o.className='obstacle';
-        const x = Math.random()*(gameArea.clientWidth-60),
-              y = Math.random()*(gameArea.clientHeight-200);
-        o.style.left = x + 'px'; 
-        o.style.top = y + 'px';
-        gameArea.appendChild(o); obstacles.push(o);
-      }
-    }
-
-    function createTargets(){
-      for(let i=0; i<participants.length; i++){
-        const t = document.createElement('div'); t.className='target alive';
-        t.dataset.name = participants[i];
-        const x = Math.random()*(gameArea.clientWidth-50),
-              y = Math.random()*(gameArea.clientHeight-150);
-        t.style.left = x + 'px'; 
-        t.style.top = y + 'px'; 
-        t.dataset.eliminated = 'false';
-        gameArea.appendChild(t); targets.push(t);
-      }
-      shooter.style.left = (gameArea.clientWidth/2 - shooter.offsetWidth/2) + 'px';
-    }
-
-    function setupMovements(){
-      movements.clear();
-      for(let t of targets){
-        const ang = Math.random()*2*Math.PI;
-        movements.set(t, {dx:Math.cos(ang)*baseSpeed, dy:Math.sin(ang)*baseSpeed});
-      }
-    }
-
-    function moveTargets(time) {
-      if (!shootingActive) return;
-      // 경과 시간(초)
-      const elapsedSec = (time - startTime) / 1000;
-      const currentSpeed = baseSpeed + Math.floor(elapsedSec);
-
-      targets.forEach(t => {
-        if (t.dataset.eliminated === 'true') return;
-
-        const mv = movements.get(t);
-        if (!mv) return;
-
-        // 방향 벡터 단위화
-        const angle = Math.atan2(mv.dy, mv.dx);
-        mv.dx = Math.cos(angle) * currentSpeed;
-        mv.dy = Math.sin(angle) * currentSpeed;
-
-        let x = parseFloat(t.style.left);
-        let y = parseFloat(t.style.top);
-        let newX = x + mv.dx;
-        let newY = y + mv.dy;
-
-        // 게임 영역 밖으로 나가면 방향 반전
-        if (newX < 0 || newX > gameArea.clientWidth - 50) mv.dx = -mv.dx;
-        if (newY < 0 || newY > gameArea.clientHeight - 150) mv.dy = -mv.dy;
-
-        // 장애물과 충돌 검사
-        let collided = false;
-        for (let o of obstacles) {
-          const ox = parseFloat(o.style.left);
-          const oy = parseFloat(o.style.top);
-          const ow = o.offsetWidth;
-          const oh = o.offsetHeight;
-
-          const tw = t.offsetWidth;
-          const th = t.offsetHeight;
-
-          if (
-            newX < ox + ow &&
-            newX + tw > ox &&
-            newY < oy + oh &&
-            newY + th > oy
-          ) {
-            collided = true;
-            break;
+          if(flashCount % 2 === 0){
+            ctx.fillStyle = 'rgba(255, 85, 85, 0.8)';
+            ctx.shadowColor = '#f55';
+            ctx.shadowBlur = 30;
+            ctx.beginPath();
+            ctx.arc(targetPos.x, targetPos.y, 40, 0, 2*Math.PI);
+            ctx.fill();
           }
-        }
-
-        // 충돌했으면 방향 반전
-        if (collided) {
-          mv.dx = -mv.dx;
-          mv.dy = -mv.dy;
-        } else {
-          t.style.left = newX + 'px';
-          t.style.top = newY + 'px';
-        }
-      });
-
-      requestAnimationFrame(moveTargets);
-    }
-
-    function createBlinking(){
-      let invisibleDuration = 600;
-      let blinkInterval = 4000;
-      let isInvisible = false;
-
-      function blink() {
-        if (!shootingActive) return;
-        targets.forEach(t => {
-          if (t.dataset.eliminated === 'true') return;
-          if(isInvisible) {
-            t.classList.remove('invisible');
+          flashCount++;
+          if(flashCount < 6){
+            setTimeout(flash, 100);
           } else {
-            t.classList.add('invisible');
+            resolve();
           }
-        });
-        isInvisible = !isInvisible;
-        setTimeout(() => {
-          if (!shootingActive) return;
-          blink();
-        }, isInvisible ? invisibleDuration : blinkInterval - invisibleDuration);
+        }
+        flash();
       }
-      blink();
+    }
+    animate();
+  });
+}
+
+async function survivalMode(remaining, winnerCount, mapId) {
+  deadListTitle.textContent = '탈락자 리스트';
+  const aiPos = { x: canvas.width / 2, y: canvas.height / 2 };
+  const aimInterval = 50;       // 회전 주기(ms)
+  const rotationSpeed = 0.15;   // 회전 속도 (라디안)
+
+  const totalPlayers = remaining.length + deadList.length;
+
+  function normalizeAngle(angle) {
+    while (angle < 0) angle += Math.PI * 2;
+    while (angle >= Math.PI * 2) angle -= Math.PI * 2;
+    return angle;
+  }
+
+  let currentAngle = 0;
+  currentAngle = normalizeAngle(currentAngle);
+
+  let lastShotTime = Date.now();
+  let delayAfterShot = 0;
+  let pendingShot = null;
+
+  while (true) {
+    const now = Date.now();
+    const timeSinceLastShot = now - lastShotTime;
+
+    // 회전
+    currentAngle += rotationSpeed;
+    currentAngle = normalizeAngle(currentAngle);
+
+    drawMap(ctx, mapId);
+    drawPlayers(remaining);
+    drawAI(ctx, aiPos, currentAngle);
+    updateDeadList(deadList);
+
+    // 탈락자 선정 대기 중일 때만 새로운 타겟 선정
+    if (!pendingShot && timeSinceLastShot >= delayAfterShot && remaining.length > winnerCount) {
+      const loseIndex = Math.floor(Math.random() * remaining.length);
+      const loserPos = getPlayerPosition(loseIndex, remaining.length);
+      pendingShot = { index: loseIndex, pos: loserPos };
     }
 
-  </script>
+    if (pendingShot) {
+      const { index: loseIndex, pos: loserPos } = pendingShot;
+
+      const dx = loserPos.x - aiPos.x;
+      const dy = loserPos.y - aiPos.y;
+      const targetAngle = normalizeAngle(Math.atan2(dy, dx));
+
+      let diff = targetAngle - currentAngle;
+      if (diff > Math.PI) diff -= 2 * Math.PI;
+      if (diff < -Math.PI) diff += 2 * Math.PI;
+
+      // 일정 각도 이내면 사격
+      if (Math.abs(diff) < 0.2) {
+        await shootEffect(aiPos, loserPos);
+
+        // 탈락 처리
+        const removed = remaining.splice(loseIndex, 1)[0];
+        deadList.push(removed);
+
+        // 다음 사격까지의 지연 시간 설정
+        const minDelay = 300;
+        const maxDelay = 3000;
+        const currentPlayers = remaining.length;
+        const ratio = (totalPlayers - currentPlayers) / totalPlayers;
+        delayAfterShot = minDelay + Math.pow(ratio, 3) * (maxDelay - minDelay);
+        lastShotTime = Date.now();
+        pendingShot = null;
+
+        drawMap(ctx, mapId);
+        drawPlayers(remaining);
+        drawAI(ctx, aiPos, currentAngle);
+        updateDeadList(deadList);
+      }
+    }
+
+    // 종료 조건 확인
+    if (remaining.length <= winnerCount) {
+      break;
+    }
+
+    await sleep(aimInterval);
+  }
+
+  return remaining;
+}
+
+async function targetingMode(remaining, winnerCount, mapId) {
+  deadListTitle.textContent = '당첨자 리스트';
+  const aiPos = { x: canvas.width / 2, y: canvas.height / 2 };
+  const aimInterval = 50;        // 회전 속도 간격(ms)
+  const rotationSpeed = 0.15;    // 회전 속도 (라디안)
+  const angleThreshold = 0.1;    // 멈출 각도 차이 임계값 (라디안)
+
+  while (remaining.length > 0 && winners.length < winnerCount) {
+    const targetIndex = Math.floor(Math.random() * remaining.length);
+    const targetName = remaining[targetIndex];
+    const targetPos = getPlayerPosition(targetIndex, remaining.length);
+
+    // 목표 각도
+    const dx = targetPos.x - aiPos.x;
+    const dy = targetPos.y - aiPos.y;
+    const targetAngle = Math.atan2(dy, dx);
+
+    let angle = 0;
+
+    while (true) {
+      angle += rotationSpeed;
+      if (angle > 2 * Math.PI) angle -= 2 * Math.PI;
+
+      let diff = targetAngle - angle;
+      if (diff > Math.PI) diff -= 2 * Math.PI;
+      if (diff < -Math.PI) diff += 2 * Math.PI;
+
+      if (Math.abs(diff) < angleThreshold) {
+        angle = targetAngle;
+        drawMap(ctx, mapId);
+        drawPlayers(remaining);
+        drawAI(ctx, aiPos, angle);
+        break;
+      }
+
+      drawMap(ctx, mapId);
+      drawPlayers(remaining);
+      drawAI(ctx, aiPos, angle);
+      await sleep(aimInterval);
+    }
+
+    // 쏘기
+    await shootEffect(aiPos, targetPos);
+
+    // 당첨자 처리
+    const removed = remaining.splice(targetIndex, 1)[0];
+    winners.push(removed);
+
+    drawMap(ctx, mapId);
+    drawPlayers(remaining);
+    updateWinnerList(winners); // ✅ 당첨자 리스트 갱신
+  }
+
+  return winners;
+}
+
+function drawAI(ctx, pos, angle) {
+  const len = 60;
+  ctx.strokeStyle = '#f55';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#f55';
+  ctx.shadowBlur = 15;
+  ctx.beginPath();
+  ctx.moveTo(pos.x, pos.y);
+  ctx.lineTo(pos.x + len * Math.cos(angle), pos.y + len * Math.sin(angle));
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+function normalizeAngle(angle) {
+  while (angle < -Math.PI) angle += 2 * Math.PI;
+  while (angle > Math.PI) angle -= 2 * Math.PI;
+  return angle;
+}
+
+function validateInput(){
+  if(players.length < 2){
+    alert('참가자는 최소 2명 이상이어야 합니다.');
+    return false;
+  }
+  let winnerCount = parseInt(winnerCountInput.value);
+  if(isNaN(winnerCount) || winnerCount < 1){
+    alert('당첨자 수를 올바르게 입력하세요.');
+    return false;
+  }
+  if(winnerCount >= players.length){
+    alert('당첨자 수는 참가자 수보다 적어야 합니다.');
+    return false;
+  }
+  return true;
+}
+
+function updatePlayersFromInput(){
+  players = playerInput.value.trim()
+    .split(/[\n,]+/)
+    .map(p => p.trim())
+    .filter(p => p.length > 0);
+
+  deadList = [];
+  winners = [];
+  drawMap(ctx, mapSelect.value);
+  drawPlayers(players);
+  updateDeadList(deadList);
+}
+
+async function runGame(){
+  if(gameRunning) return;
+  if(!validateInput()) return;
+  gameRunning = true;
+  deadList = [];
+  winners = [];
+  let winnerCount = parseInt(winnerCountInput.value);
+  let mode = modeSelect.value;
+  let mapId = mapSelect.value;
+  let remaining = players.slice();
+
+  drawMap(ctx, mapId);
+  drawPlayers(remaining);
+  updateDeadList(deadList);
+
+  if(mode === 'survival'){
+    winners = await survivalMode(remaining, winnerCount, mapId);
+  } else {
+    winners = await targetingMode(remaining, winnerCount, mapId);
+  }
+
+  ctx.clearRect(0, 0, width, height);
+  drawMap(ctx, mapId);
+  ctx.font = 'bold 28px Arial';
+  ctx.fillStyle = '#0f0';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = '#0f0';
+  ctx.shadowBlur = 20;
+
+  let text = `🎉 당첨자 (${winners.length}명) 🎉\n` + winners.join(', ');
+  const lines = text.split('\n');
+  lines.forEach((line, idx) => {
+    ctx.fillText(line, width/2, height/2 + idx*40);
+  });
+  gameRunning = false;
+}
+
+updatePlayersFromInput();
+playerInput.addEventListener('input', () => {
+  if(!gameRunning) updatePlayersFromInput();
+});
+startBtn.addEventListener('click', runGame);
+</script>
+
 </body>
 </html>
